@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 36 33% 96%;
+    --foreground: 24 45% 12%;
+
+    --card: 36 40% 99%;
+    --card-foreground: 24 45% 12%;
+
+    --popover: 36 40% 99%;
+    --popover-foreground: 24 45% 12%;
+
+    --primary: 24 56% 28%;
+    --primary-foreground: 36 50% 96%;
+
+    --secondary: 32 30% 90%;
+    --secondary-foreground: 24 45% 20%;
+
+    --muted: 30 20% 93%;
+    --muted-foreground: 24 15% 50%;
+
+    --accent: 32 55% 80%;
+    --accent-foreground: 24 56% 18%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 20% 89%;
+    --input: 30 20% 89%;
+    --ring: 24 56% 28%;
+
+    --radius: 1rem;
+
+    --sidebar-background: 36 30% 97%;
+    --sidebar-foreground: 24 30% 30%;
+    --sidebar-primary: 24 50% 20%;
+    --sidebar-primary-foreground: 36 50% 96%;
+    --sidebar-accent: 32 25% 92%;
+    --sidebar-accent-foreground: 24 40% 15%;
+    --sidebar-border: 30 20% 90%;
+    --sidebar-ring: 24 56% 28%;
+
+    /* NearBite brand tokens */
+    --brand-gold: 32 60% 72%;
+    --brand-warm: 30 45% 85%;
+    --brand-cream: 36 40% 97%;
+    --star-color: 38 92% 50%;
+  }
+
+  .dark {
+    --background: 24 30% 8%;
+    --foreground: 36 30% 92%;
+
+    --card: 24 25% 12%;
+    --card-foreground: 36 30% 92%;
+
+    --popover: 24 25% 12%;
+    --popover-foreground: 36 30% 92%;
+
+    --primary: 32 55% 65%;
+    --primary-foreground: 24 30% 8%;
+
+    --secondary: 24 20% 18%;
+    --secondary-foreground: 36 30% 90%;
+
+    --muted: 24 15% 18%;
+    --muted-foreground: 30 15% 55%;
+
+    --accent: 32 40% 30%;
+    --accent-foreground: 36 30% 92%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 24 15% 20%;
+    --input: 24 15% 20%;
+    --ring: 32 55% 65%;
+
+    --sidebar-background: 24 25% 10%;
+    --sidebar-foreground: 36 25% 85%;
+    --sidebar-primary: 32 55% 60%;
+    --sidebar-primary-foreground: 24 30% 8%;
+    --sidebar-accent: 24 15% 16%;
+    --sidebar-accent-foreground: 36 25% 85%;
+    --sidebar-border: 24 15% 18%;
+    --sidebar-ring: 32 55% 65%;
+
+    --brand-gold: 32 50% 45%;
+    --brand-warm: 30 30% 25%;
+    --brand-cream: 24 20% 14%;
+    --star-color: 38 85% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Nunito', sans-serif;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 8px);
+  }
+}
