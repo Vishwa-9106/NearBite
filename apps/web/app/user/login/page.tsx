@@ -3,93 +3,72 @@
 import type { ChangeEvent } from "react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
-import { getFirebaseAuth } from "../../../lib/firebase-auth";
 
 type Step = "PHONE" | "OTP" | "PROFILE";
 const OTP_LENGTH = 6;
 const TEST_OTP = "123456";
-const FIREBASE_PHONE_AUTH_ENABLED = process.env.NEXT_PUBLIC_FIREBASE_PHONE_AUTH_ENABLED === "true";
+const COUNTRY_CODE = "+91";
+const MOBILE_DIGITS = 10;
+
+type ApiErrorPayload = {
+  error?: string;
+};
+
+async function getApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = (await response.json()) as ApiErrorPayload;
+    if (payload.error) {
+      return payload.error;
+    }
+  } catch {
+    // Ignore JSON parsing errors and return fallback.
+  }
+
+  return fallback;
+}
 
 export default function UserLoginPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("PHONE");
-  const [otpSent, setOtpSent] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
-  const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
-  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const normalizedPhone = `${COUNTRY_CODE}${phoneNumber}`;
 
   const handlePhoneChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setPhoneNumber(event.target.value.replace(/\D/g, "").slice(0, 10));
+    setPhoneNumber(event.target.value.replace(/\D/g, "").slice(0, MOBILE_DIGITS));
+    setError("");
   };
 
   const resetToPhoneStep = () => {
     setStep("PHONE");
-    setOtpSent(false);
     setOtp(Array(OTP_LENGTH).fill(""));
-    setUsername("");
+    setName("");
     setEmail("");
     setError("");
   };
 
-  const ensureRecaptcha = () => {
-    if (typeof window === "undefined") {
-      throw new Error("Unsupported environment");
-    }
-
-    if (recaptchaRef.current) {
-      return recaptchaRef.current;
-    }
-
-    const auth = getFirebaseAuth();
-    recaptchaRef.current = new RecaptchaVerifier(auth, "recaptcha-container", {
-      size: "invisible"
-    });
-    return recaptchaRef.current;
-  };
-
   const moveToOtpStep = () => {
-    setOtpSent(true);
     setStep("OTP");
+    setOtp(Array(OTP_LENGTH).fill(""));
   };
 
   const handleGetOtp = async () => {
-    if (phoneNumber.length !== 10) {
+    if (phoneNumber.length !== MOBILE_DIGITS) {
       setError("Please enter a valid 10-digit mobile number.");
       return;
     }
 
     setLoading(true);
     setError("");
+
     try {
-      if (!FIREBASE_PHONE_AUTH_ENABLED) {
-        moveToOtpStep();
-        return;
-      }
-
-      const auth = getFirebaseAuth();
-      const verifier = ensureRecaptcha();
-      confirmationResultRef.current = await signInWithPhoneNumber(auth, `+91${phoneNumber}`, verifier);
       moveToOtpStep();
-    } catch (sendError) {
-      const errorCode =
-        typeof sendError === "object" && sendError && "code" in sendError
-          ? String((sendError as { code?: unknown }).code)
-          : "";
-
-      if (errorCode === "auth/billing-not-enabled") {
-        moveToOtpStep();
-        return;
-      }
-
-      setError(sendError instanceof Error ? sendError.message : "Failed to send OTP.");
     } finally {
       setLoading(false);
     }
@@ -100,6 +79,7 @@ export default function UserLoginPage() {
     const nextOtp = [...otp];
     nextOtp[index] = value;
     setOtp(nextOtp);
+    setError("");
 
     if (value && index < OTP_LENGTH - 1) {
       otpInputRefs.current[index + 1]?.focus();
@@ -109,6 +89,16 @@ export default function UserLoginPage() {
   const handleOtpKeyDown = (index: number, key: string) => {
     if (key === "Backspace" && !otp[index] && index > 0) {
       otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const startSession = async () => {
+    const response = await fetch("/api/auth/login", {
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      throw new Error(await getApiErrorMessage(response, "Failed to start session."));
     }
   };
 
@@ -127,14 +117,17 @@ export default function UserLoginPage() {
     setLoading(true);
     setError("");
     try {
-      const phone = `+91${phoneNumber}`;
-      const existsResponse = await fetch(`/api/user/exists?phone=${encodeURIComponent(phone)}`);
+      const existsResponse = await fetch(`/api/user/exists?phone=${encodeURIComponent(normalizedPhone)}`, {
+        cache: "no-store"
+      });
+
       if (!existsResponse.ok) {
-        throw new Error("Failed to check user.");
+        throw new Error(await getApiErrorMessage(existsResponse, "Failed to check user."));
       }
 
       const existsData = (await existsResponse.json()) as { exists: boolean };
       if (existsData.exists) {
+        await startSession();
         router.push("/user/dashboard");
         return;
       }
@@ -148,10 +141,13 @@ export default function UserLoginPage() {
   };
 
   const createUserAndContinue = async () => {
-    if (!username.trim()) {
-      setError("Username is required.");
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Name is required.");
       return;
     }
+
+    const trimmedEmail = email.trim();
 
     setLoading(true);
     setError("");
@@ -160,16 +156,17 @@ export default function UserLoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: `+91${phoneNumber}`,
-          username: username.trim(),
-          email: email.trim() || undefined
+          phone: normalizedPhone,
+          name: trimmedName,
+          email: trimmedEmail || undefined
         })
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create user.");
+        throw new Error(await getApiErrorMessage(response, "Failed to create user."));
       }
 
+      await startSession();
       router.push("/user/dashboard");
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to continue.");
@@ -200,7 +197,7 @@ export default function UserLoginPage() {
           )}
           {step === "OTP" && (
             <p className="mt-1 text-sm font-medium text-[#8d7a67]">
-              We sent a code to +91 {phoneNumber}
+              Enter the OTP sent to {COUNTRY_CODE} {phoneNumber}
             </p>
           )}
           {step === "PROFILE" && (
@@ -215,7 +212,7 @@ export default function UserLoginPage() {
             <>
               <div className="flex items-center gap-2">
                 <div className="rounded-2xl border border-[#e4d8c7] bg-[#efe5d6] px-4 py-3 text-sm font-bold text-[#3f2a1f]">
-                  +91
+                  {COUNTRY_CODE}
                 </div>
                 <label className="sr-only" htmlFor="phone">
                   Mobile number
@@ -238,7 +235,7 @@ export default function UserLoginPage() {
                 disabled={loading}
                 className="w-full rounded-2xl bg-[#8f5a3c] py-4 text-base font-extrabold text-[#fffaf2] disabled:opacity-70"
               >
-                {loading ? "Sending..." : "Get OTP"}
+                {loading ? "Please wait..." : "Get OTP"}
               </button>
             </>
           )}
@@ -273,6 +270,8 @@ export default function UserLoginPage() {
                 {loading ? "Verifying..." : "Verify OTP"}
               </button>
 
+              <p className="text-xs font-medium text-[#8d7a67]">Use OTP: {TEST_OTP}</p>
+
               <button
                 type="button"
                 onClick={resetToPhoneStep}
@@ -287,16 +286,22 @@ export default function UserLoginPage() {
             <>
               <input
                 type="text"
-                placeholder="Username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Name"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-[#e4d8c7] bg-[#fffaf2] px-4 py-3 text-base font-medium text-[#3f2a1f] placeholder:text-[#b8a998] focus:outline-none"
               />
               <input
                 type="email"
                 placeholder="Email (optional)"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-[#e4d8c7] bg-[#fffaf2] px-4 py-3 text-base font-medium text-[#3f2a1f] placeholder:text-[#b8a998] focus:outline-none"
               />
 
@@ -313,8 +318,6 @@ export default function UserLoginPage() {
 
           {error && <p className="text-sm font-semibold text-red-700">{error}</p>}
         </form>
-
-        <div id="recaptcha-container" />
 
         <div className="mt-8 flex items-center justify-center gap-2" aria-hidden="true">
           <span className={`h-2.5 rounded-full ${step === "PHONE" ? "w-6 bg-[#8f5a3c]" : "w-2.5 bg-[#d9cbb8]"}`} />

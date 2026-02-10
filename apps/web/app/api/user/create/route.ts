@@ -1,27 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser } from "../_store";
-
-type CreateUserPayload = {
-  phone?: string;
-  username?: string;
-  email?: string;
-};
+import { ZodError } from "zod";
+import { createUserRecord } from "../../../../lib/user-repository";
+import { createUserPayloadSchema } from "../../../../lib/user-schemas";
 
 export async function POST(request: NextRequest) {
-  const payload = (await request.json()) as CreateUserPayload;
+  try {
+    const payload = createUserPayloadSchema.parse(await request.json());
+    const created = await createUserRecord(payload);
 
-  if (!payload.phone || !payload.username?.trim()) {
-    return NextResponse.json(
-      { error: "phone and username are required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ created });
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    }
+
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        {
+          error: "Invalid request payload.",
+          issues: error.issues
+        },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ error: "Failed to create user." }, { status: 500 });
   }
-
-  createUser({
-    phone: payload.phone,
-    username: payload.username.trim(),
-    email: payload.email?.trim() || undefined
-  });
-
-  return NextResponse.json({ created: true });
 }

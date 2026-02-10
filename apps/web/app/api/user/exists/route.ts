@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { userExists } from "../_store";
+import { ZodError } from "zod";
+import { hasUserWithPhone } from "../../../../lib/user-repository";
+import { userExistsQuerySchema } from "../../../../lib/user-schemas";
 
 export async function GET(request: NextRequest) {
-  const phone = request.nextUrl.searchParams.get("phone");
+  try {
+    const query = userExistsQuerySchema.parse({
+      phone: request.nextUrl.searchParams.get("phone")
+    });
 
-  if (!phone) {
-    return NextResponse.json({ error: "phone query param is required" }, { status: 400 });
+    const exists = await hasUserWithPhone(query.phone);
+
+    return NextResponse.json({ exists });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        {
+          error: "Invalid request payload.",
+          issues: error.issues
+        },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ error: "Failed to check user." }, { status: 500 });
   }
-
-  return NextResponse.json({ exists: userExists(phone) });
 }
