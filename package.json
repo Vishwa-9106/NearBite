@@ -1,0 +1,16 @@
+{
+  "name": "nearbite",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @nearbite/web run dev",
+    "dev:api": "npm --workspace @nearbite/api run dev",
+    "build:web": "npm --workspace @nearbite/web run build",
+    "build:api": "npm --workspace @nearbite/api run build",
+    "build": "npm run build:web && npm run build:api"
+  }
+}
