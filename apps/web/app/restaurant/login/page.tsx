@@ -3,15 +3,25 @@
 import type { ChangeEvent } from "react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ZodError } from "zod";
+import { restaurantBasicDetailsSchema, restaurantLocationSchema } from "../../../lib/restaurant-schemas";
 
-type Step = "PHONE" | "OTP" | "PROFILE";
-const OTP_LENGTH = 6;
-const TEST_OTP = "123456";
-const COUNTRY_CODE = "+91";
-const MOBILE_DIGITS = 10;
+type Step = "PHONE" | "OTP" | "DETAILS" | "VERIFY";
 
 type ApiErrorPayload = {
   error?: string;
+};
+
+const COUNTRY_CODE = "+91";
+const MOBILE_DIGITS = 10;
+const OTP_LENGTH = 6;
+const TEST_OTP = "123456";
+
+const STEP_NUMBER_BY_STEP: Record<Step, number> = {
+  PHONE: 1,
+  OTP: 2,
+  DETAILS: 3,
+  VERIFY: 4
 };
 
 async function getApiErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -27,51 +37,27 @@ async function getApiErrorMessage(response: Response, fallback: string): Promise
   return fallback;
 }
 
-export default function UserLoginPage() {
+export default function RestaurantLoginPage() {
   const router = useRouter();
+
   const [step, setStep] = useState<Step>("PHONE");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [restaurantName, setRestaurantName] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [googleMapsLink, setGoogleMapsLink] = useState("");
+  const [fssaiLicense, setFssaiLicense] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
   const normalizedPhone = `${COUNTRY_CODE}${phoneNumber}`;
+  const currentStepNumber = STEP_NUMBER_BY_STEP[step];
 
   const handlePhoneChange = (event: ChangeEvent<HTMLInputElement>) => {
     setPhoneNumber(event.target.value.replace(/\D/g, "").slice(0, MOBILE_DIGITS));
     setError("");
-  };
-
-  const resetToPhoneStep = () => {
-    setStep("PHONE");
-    setOtp(Array(OTP_LENGTH).fill(""));
-    setName("");
-    setEmail("");
-    setError("");
-  };
-
-  const moveToOtpStep = () => {
-    setStep("OTP");
-    setOtp(Array(OTP_LENGTH).fill(""));
-  };
-
-  const handleGetOtp = async () => {
-    if (phoneNumber.length !== MOBILE_DIGITS) {
-      setError("Please enter a valid 10-digit mobile number.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      moveToOtpStep();
-    } finally {
-      setLoading(false);
-    }
   };
 
   const updateOtpDigit = (index: number, rawValue: string) => {
@@ -92,15 +78,38 @@ export default function UserLoginPage() {
     }
   };
 
+  const resetToPhoneStep = () => {
+    setStep("PHONE");
+    setOtp(Array(OTP_LENGTH).fill(""));
+    setError("");
+  };
+
   const startSession = async () => {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "user" })
+      body: JSON.stringify({ role: "restaurant" })
     });
 
     if (!response.ok) {
       throw new Error(await getApiErrorMessage(response, "Failed to start session."));
+    }
+  };
+
+  const handleGetOtp = async () => {
+    if (phoneNumber.length !== MOBILE_DIGITS) {
+      setError("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      setStep("OTP");
+      setOtp(Array(OTP_LENGTH).fill(""));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -118,23 +127,24 @@ export default function UserLoginPage() {
 
     setLoading(true);
     setError("");
+
     try {
-      const existsResponse = await fetch(`/api/user/exists?phone=${encodeURIComponent(normalizedPhone)}`, {
+      const existsResponse = await fetch(`/api/restaurant/exists?phone=${encodeURIComponent(normalizedPhone)}`, {
         cache: "no-store"
       });
 
       if (!existsResponse.ok) {
-        throw new Error(await getApiErrorMessage(existsResponse, "Failed to check user."));
+        throw new Error(await getApiErrorMessage(existsResponse, "Failed to check restaurant."));
       }
 
       const existsData = (await existsResponse.json()) as { exists: boolean };
       if (existsData.exists) {
         await startSession();
-        router.push("/user/dashboard");
+        router.replace("/restaurant/dashboard");
         return;
       }
 
-      setStep("PROFILE");
+      setStep("DETAILS");
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : "Verification failed.");
     } finally {
@@ -142,36 +152,73 @@ export default function UserLoginPage() {
     }
   };
 
-  const createUserAndContinue = async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Name is required.");
+  const moveToVerifyStep = () => {
+    try {
+      restaurantBasicDetailsSchema.parse({
+        restaurantName,
+        ownerName
+      });
+
+      setStep("VERIFY");
+      setError("");
+    } catch (validationError) {
+      if (validationError instanceof ZodError) {
+        setError(validationError.issues[0]?.message ?? "Please enter required details.");
+        return;
+      }
+
+      setError("Please enter required details.");
+    }
+  };
+
+  const handleSubmitOnboarding = async () => {
+    try {
+      restaurantLocationSchema.parse({ googleMapsLink });
+    } catch (validationError) {
+      if (validationError instanceof ZodError) {
+        setError(validationError.issues[0]?.message ?? "Enter a valid Google Maps link.");
+        return;
+      }
+
+      setError("Enter a valid Google Maps link.");
       return;
     }
 
-    const trimmedEmail = email.trim();
+    if (!fssaiLicense) {
+      setError("FSSAI license file is required.");
+      return;
+    }
 
     setLoading(true);
     setError("");
+
     try {
-      const response = await fetch("/api/user/create", {
+      const formData = new FormData();
+      formData.set("phone", normalizedPhone);
+      formData.set("restaurantName", restaurantName.trim());
+      formData.set("ownerName", ownerName.trim());
+      formData.set("googleMapsLink", googleMapsLink.trim());
+      formData.set("fssaiLicense", fssaiLicense);
+
+      const response = await fetch("/api/restaurant/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: normalizedPhone,
-          name: trimmedName,
-          email: trimmedEmail || undefined
-        })
+        body: formData
       });
 
+      if (response.status === 409) {
+        await startSession();
+        router.replace("/restaurant/dashboard");
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(await getApiErrorMessage(response, "Failed to create user."));
+        throw new Error(await getApiErrorMessage(response, "Failed to create restaurant account."));
       }
 
       await startSession();
-      router.push("/user/dashboard");
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Unable to continue.");
+      router.replace("/restaurant/dashboard");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Unable to complete onboarding.");
     } finally {
       setLoading(false);
     }
@@ -191,10 +238,11 @@ export default function UserLoginPage() {
         </div>
 
         <header className="mb-5">
-          <h1 className="text-3xl font-extrabold text-[#3f2a1f]">Welcome to NearBite</h1>
+          <h1 className="text-3xl font-extrabold text-[#3f2a1f]">Restaurant Partner</h1>
+          <p className="mt-1 text-sm font-medium text-[#8d7a67]">Step {currentStepNumber} of 4 (Step 1 to Step 4)</p>
           {step === "PHONE" && (
             <p className="mt-1 text-sm font-medium text-[#8d7a67]">
-              Enter your mobile number to continue
+              Enter restaurant owner mobile number to get OTP
             </p>
           )}
           {step === "OTP" && (
@@ -202,10 +250,11 @@ export default function UserLoginPage() {
               Enter the OTP sent to {COUNTRY_CODE} {phoneNumber}
             </p>
           )}
-          {step === "PROFILE" && (
-            <p className="mt-1 text-sm font-medium text-[#8d7a67]">
-              Complete your profile to continue
-            </p>
+          {step === "DETAILS" && (
+            <p className="mt-1 text-sm font-medium text-[#8d7a67]">Add basic restaurant details</p>
+          )}
+          {step === "VERIFY" && (
+            <p className="mt-1 text-sm font-medium text-[#8d7a67]">Upload FSSAI and business location</p>
           )}
         </header>
 
@@ -284,24 +333,24 @@ export default function UserLoginPage() {
             </>
           )}
 
-          {step === "PROFILE" && (
+          {step === "DETAILS" && (
             <>
               <input
                 type="text"
-                placeholder="Name"
-                value={name}
+                placeholder="Hotel / Restaurant Name"
+                value={restaurantName}
                 onChange={(event) => {
-                  setName(event.target.value);
+                  setRestaurantName(event.target.value);
                   setError("");
                 }}
                 className="w-full rounded-2xl border border-[#e4d8c7] bg-[#fffaf2] px-4 py-3 text-base font-medium text-[#3f2a1f] placeholder:text-[#b8a998] focus:outline-none"
               />
               <input
-                type="email"
-                placeholder="Email (optional)"
-                value={email}
+                type="text"
+                placeholder="Owner Name"
+                value={ownerName}
                 onChange={(event) => {
-                  setEmail(event.target.value);
+                  setOwnerName(event.target.value);
                   setError("");
                 }}
                 className="w-full rounded-2xl border border-[#e4d8c7] bg-[#fffaf2] px-4 py-3 text-base font-medium text-[#3f2a1f] placeholder:text-[#b8a998] focus:outline-none"
@@ -309,11 +358,48 @@ export default function UserLoginPage() {
 
               <button
                 type="button"
-                onClick={createUserAndContinue}
+                onClick={moveToVerifyStep}
                 disabled={loading}
                 className="w-full rounded-2xl bg-[#8f5a3c] py-4 text-base font-extrabold text-[#fffaf2] disabled:opacity-70"
               >
-                {loading ? "Please wait..." : "Continue"}
+                Next
+              </button>
+            </>
+          )}
+
+          {step === "VERIFY" && (
+            <>
+              <label className="block text-left text-sm font-semibold text-[#3f2a1f]" htmlFor="fssai-file">
+                FSSAI License (PDF/Image)
+              </label>
+              <input
+                id="fssai-file"
+                type="file"
+                accept=".pdf,image/*"
+                onChange={(event) => {
+                  setFssaiLicense(event.target.files?.[0] ?? null);
+                  setError("");
+                }}
+                className="w-full rounded-2xl border border-[#e4d8c7] bg-[#fffaf2] px-4 py-3 text-sm font-medium text-[#3f2a1f] file:mr-3 file:rounded-lg file:border-0 file:bg-[#efe5d6] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[#3f2a1f] focus:outline-none"
+              />
+              <input
+                type="url"
+                placeholder="Google Maps hotel location link"
+                value={googleMapsLink}
+                onChange={(event) => {
+                  setGoogleMapsLink(event.target.value);
+                  setError("");
+                }}
+                className="w-full rounded-2xl border border-[#e4d8c7] bg-[#fffaf2] px-4 py-3 text-base font-medium text-[#3f2a1f] placeholder:text-[#b8a998] focus:outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={handleSubmitOnboarding}
+                disabled={loading}
+                className="w-full rounded-2xl bg-[#8f5a3c] py-4 text-base font-extrabold text-[#fffaf2] disabled:opacity-70"
+              >
+                {loading ? "Please wait..." : "Verify & Submit"}
               </button>
             </>
           )}
@@ -324,7 +410,8 @@ export default function UserLoginPage() {
         <div className="mt-8 flex items-center justify-center gap-2" aria-hidden="true">
           <span className={`h-2.5 rounded-full ${step === "PHONE" ? "w-6 bg-[#8f5a3c]" : "w-2.5 bg-[#d9cbb8]"}`} />
           <span className={`h-2.5 rounded-full ${step === "OTP" ? "w-6 bg-[#8f5a3c]" : "w-2.5 bg-[#d9cbb8]"}`} />
-          <span className={`h-2.5 rounded-full ${step === "PROFILE" ? "w-6 bg-[#8f5a3c]" : "w-2.5 bg-[#d9cbb8]"}`} />
+          <span className={`h-2.5 rounded-full ${step === "DETAILS" ? "w-6 bg-[#8f5a3c]" : "w-2.5 bg-[#d9cbb8]"}`} />
+          <span className={`h-2.5 rounded-full ${step === "VERIFY" ? "w-6 bg-[#8f5a3c]" : "w-2.5 bg-[#d9cbb8]"}`} />
         </div>
       </section>
     </main>
