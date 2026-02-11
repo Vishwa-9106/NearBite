@@ -7,18 +7,20 @@ const AUTH_ROLE_COOKIE = "auth_role";
 type AuthRole = "user" | "restaurant" | "admin";
 type ProtectedRoute = {
   route: string;
-  role: Extract<AuthRole, "user" | "restaurant">;
+  role: AuthRole;
   loginRoute: string;
 };
 
 const LOGIN_ROUTES = [
   { route: "/user/login", dashboardRoute: "/user/dashboard" },
-  { route: "/restaurant/login", dashboardRoute: "/restaurant/dashboard" }
+  { route: "/restaurant/login", dashboardRoute: "/restaurant/dashboard" },
+  { route: "/admin/login", dashboardRoute: "/admin" }
 ];
 
 const PROTECTED_ROUTES: ProtectedRoute[] = [
   { route: "/user", role: "user", loginRoute: "/user/login" },
-  { route: "/restaurant/dashboard", role: "restaurant", loginRoute: "/restaurant/login" }
+  { route: "/restaurant/dashboard", role: "restaurant", loginRoute: "/restaurant/login" },
+  { route: "/admin", role: "admin", loginRoute: "/admin/login" }
 ];
 
 function matchesRoute(pathname: string, route: string): boolean {
@@ -32,6 +34,10 @@ function getDashboardRouteForRole(role: string | undefined): string | null {
 
   if (role === "restaurant") {
     return "/restaurant/dashboard";
+  }
+
+  if (role === "admin") {
+    return "/admin";
   }
 
   return null;
@@ -61,5 +67,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/user/:path*", "/restaurant/:path*"]
+  matcher: ["/user/:path*", "/restaurant/:path*", "/admin/:path*"]
 };
