@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!email || !password || email !== adminEmail || password !== adminPassword) {
-      return NextResponse.json({ error: "Invalid admin credentials." }, { status: 401 });
+      return NextResponse.json({ error: "Incorrect password. Please try again." }, { status: 401 });
     }
   }
 
