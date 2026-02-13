@@ -10,4 +10,9 @@
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
   }
+
+  .admin-password-input::-ms-reveal,
+  .admin-password-input::-ms-clear {
+    display: none;
+  }
 }
