@@ -1,15 +1,60 @@
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import express from "express";
-import { ZodError } from "zod";
 import { sql } from "./clients/neon";
 import { redis } from "./clients/redis";
 import { env } from "./env";
-import { createSessionSchema } from "./schemas";
+import { authRouter } from "./routes/auth";
+import { usersRouter } from "./routes/users";
+import { restaurantsRouter } from "./routes/restaurants";
+import { mapsRouter } from "./routes/maps";
+import { adminRouter } from "./routes/admin";
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = env.FRONTEND_ORIGINS.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.set("trust proxy", 1);
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
+app.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    return next();
+  }
+
+  const origin = req.headers.origin;
+  if (!origin || allowedOrigins.includes(origin)) {
+    return next();
+  }
+
+  return res.status(403).json({ message: "Untrusted request origin" });
+});
+
+app.get("/", (_req, res) => {
+  res.json({
+    service: "nearbite-api",
+    status: "ok",
+    environment: env.NODE_ENV
+  });
+});
 
 app.get("/health", async (_req, res) => {
   try {
@@ -39,53 +84,11 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-app.post("/api/session", async (req, res) => {
-  try {
-    const payload = createSessionSchema.parse(req.body);
-    const redisKey = `session:${payload.role}:${payload.userId}`;
-
-    await redis.set(
-      redisKey,
-      {
-        role: payload.role,
-        userId: payload.userId,
-        createdAt: new Date().toISOString()
-      },
-      { ex: 60 * 60 }
-    );
-
-    res.status(201).json({
-      ok: true,
-      key: redisKey
-    });
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        ok: false,
-        message: "Invalid payload",
-        issues: error.issues
-      });
-    }
-
-    return res.status(500).json({
-      ok: false,
-      message: "Failed to create session"
-    });
-  }
-});
-
-app.get("/api/:role/ping", (req, res) => {
-  const parsedRole = createSessionSchema.shape.role.safeParse(req.params.role);
-
-  if (!parsedRole.success) {
-    return res.status(400).json({ message: "Invalid role" });
-  }
-
-  return res.json({
-    role: parsedRole.data,
-    message: `${parsedRole.data} route is live`
-  });
-});
+app.use("/auth", authRouter);
+app.use("/users", usersRouter);
+app.use("/restaurants", restaurantsRouter);
+app.use("/maps", mapsRouter);
+app.use("/admin", adminRouter);
 
 app.listen(env.PORT, () => {
   // eslint-disable-next-line no-console

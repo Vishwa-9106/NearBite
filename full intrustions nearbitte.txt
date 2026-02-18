@@ -1,0 +1,235 @@
+NEARBITE MVP - COMPREHENSIVE IMPLEMENTATION BLUEPRINT
+
+DATE
+- Last updated: 2026-02-13
+
+1) PRODUCT GOAL
+- NearBite is a pickup-first ordering platform.
+- Users place paid orders in advance, restaurants prepare, users pick up with OTP.
+- Core priorities: low-friction auth, reliable realtime status updates, clear acceptance/cancellation rules.
+
+2) TARGET ARCHITECTURE
+- Frontends:
+  - User app (Next.js, port 3000)
+  - Restaurant app (Next.js, port 3001)
+  - Admin app (Next.js, port 3002)
+- Backend:
+  - API service (Express + TypeScript, port 4000)
+- Data layer:
+  - Postgres (Neon) for durable business data
+  - Redis (Upstash) for sessions, rate limits, short-lived cache, workflow timers
+- Realtime:
+  - Socket.IO server attached to API (next module)
+
+3) STACK DECISIONS
+- Why Firebase Phone Auth:
+  - Fastest production-ready OTP path with anti-abuse controls and SDK support.
+  - Current project has Blaze plan and phone auth enabled.
+  - Good for MVP; move to dedicated SMS provider only if cost/region constraints appear.
+- Why Redis sessions:
+  - Server-controlled session revocation and role checks.
+  - No localStorage token persistence required.
+- Why one API for all roles:
+  - Centralized auth/RBAC and consistent order lifecycle enforcement.
+
+4) AUTH AND SESSION MODEL (IMPLEMENTED)
+- OTP flow (user and restaurant):
+  1. Frontend sends OTP using Firebase Phone Auth (reCAPTCHA protected).
+  2. Frontend verifies OTP and gets Firebase ID token.
+  3. Frontend sends ID token to POST /auth/session with role=user|restaurant.
+  4. API verifies token via Firebase Admin SDK.
+  5. API creates Redis-backed app session and sets HttpOnly cookie.
+- Admin flow:
+  - POST /auth/admin/login with ADMIN_EMAIL/ADMIN_PASSWORD from env.
+- Session cookie security:
+  - HttpOnly + SameSite + Secure controlled by env.
+  - For cross-domain production: SameSite=none and Secure=true.
+
+5) ROLE FLOWS (IMPLEMENTED)
+A) USER FLOW
+- Login by phone OTP.
+- Existing user -> dashboard.
+- New user -> onboarding (name, optional email, map/location).
+- Location can be auto-detected or pinned on map.
+- User dashboard is accessible only after profile + location are complete.
+
+B) RESTAURANT FLOW
+- Login by phone OTP.
+- New restaurant -> onboarding form:
+  - owner name
+  - hotel/restaurant name
+  - FSSAI number OR document photo
+  - fixed restaurant location (map pin + address)
+- Submit application -> status becomes pending.
+- Pending state page shows review message (review within 24 hours).
+- Admin approves -> dashboard access enabled.
+- Admin rejects -> reason shown, restaurant can edit and resubmit.
+
+C) ADMIN FLOW
+- Hardcoded admin login from env.
+- Application queue with filter:
+  - pending
+  - approved
+  - rejected
+  - all
+- Actions:
+  - approve
+  - reject with optional reason
+
+6) ORDER LIFECYCLE (MUST-HAVE)
+Required statuses:
+- created -> paid -> accepted -> preparing -> ready -> picked_up -> completed
+Optional statuses:
+- rejected
+- cancelled_by_user
+- cancelled_by_restaurant
+- refunded
+- expired
+
+Rules (mandatory):
+- Restaurant must accept/reject within 5 minutes after payment.
+- If timeout: auto-reject + auto-refund.
+- User can cancel only before preparing.
+- Restaurant can cancel only before preparing (admin override after that).
+- Pickup OTP is valid for configurable window after ready.
+
+7) SLA AND GUARDRAILS
+- Restaurant response SLA: 5 minutes from paid.
+- Application review SLA: <= 24 hours.
+- OTP abuse guard:
+  - Redis rate limiting on auth endpoints.
+- Data consistency:
+  - API is source of truth for role checks and lifecycle transitions.
+
+8) REALTIME DESIGN (SOCKET.IO PLAN)
+- Connection auth:
+  - Read session cookie or bearer token, validate against Redis session.
+- Rooms:
+  - user:{userId}
+  - restaurant:{restaurantId}
+  - order:{orderId}
+- Events:
+  - order.created
+  - order.paid
+  - order.accepted
+  - order.preparing
+  - order.ready
+  - order.picked_up
+  - order.completed
+  - order.cancelled
+  - order.refunded
+  - restaurant.application.updated
+
+9) DATABASE MODEL (CURRENT + NEXT)
+Current implemented core tables:
+- users
+- user_locations
+- restaurants (includes profile, status, review fields, fixed location)
+
+Next required for full ordering:
+- menus
+- menu_items
+- orders
+- order_items
+- payments
+- audit_logs (recommended)
+
+10) MAPS AND LOCATION
+- Google APIs expected enabled:
+  - Maps JavaScript
+  - Places
+  - Geocoding
+  - Geolocation
+  - Distance Matrix
+- Implemented now:
+  - map picker in user and restaurant onboarding
+  - reverse geocoding endpoint with Redis caching
+- Recommended:
+  - store location updates with timestamps
+  - periodic user refresh every 10-15 min only when app active
+
+11) PAYMENT + ESCROW RECOMMENDATION
+- For fastest India MVP with easy setup:
+  - Razorpay Route (split/escrow-like settlement) or Cashfree Easy Split.
+- Suggested rollout:
+  1. Start with direct capture + internal wallet ledger simulation.
+  2. Move to provider split settlement once order module stabilizes.
+- Keep payment provider abstracted behind one backend interface.
+
+12) UI/UX SYSTEM DECISION
+- Recommendation: same design language, role-specific accent.
+  - Shared:
+    - typography scale
+    - spacing grid
+    - card/button style
+  - Different accent colors:
+    - user: teal/cyan
+    - restaurant: amber/orange
+    - admin: indigo/blue
+- Why:
+  - Feels like one platform, but role context is instantly clear.
+
+13) DEPLOYMENT CHECKLIST
+Frontend (3 deployments)
+- Deploy each app separately.
+- Set env:
+  - NEXT_PUBLIC_API_BASE_URL
+  - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  - Firebase web config values
+
+Backend
+- Deploy apps/api.
+- Required env:
+  - FRONTEND_ORIGINS (comma-separated)
+  - FIREBASE_PROJECT_ID
+  - FIREBASE_SERVICE_ACCOUNT_JSON
+  - GOOGLE_MAPS_API_KEY
+  - ADMIN_EMAIL / ADMIN_PASSWORD
+  - SESSION_COOKIE_* values
+  - UPSTASH_REDIS_REST_URL / TOKEN
+  - NEON_DATABASE_URL
+
+Cross-domain cookies in production
+- SESSION_COOKIE_SAME_SITE=none
+- SESSION_COOKIE_SECURE=true
+- HTTPS enabled on frontend + backend
+
+14) LOCALHOST TESTING CHECKLIST
+- Firebase console -> Authentication -> Settings -> Authorized domains:
+  - add localhost
+- Run all apps:
+  - npm run dev:api
+  - npm run dev:user
+  - npm run dev:restaurant
+  - npm run dev:admin
+- Validate:
+  - OTP send/verify works for user and restaurant
+  - user new vs existing routing
+  - restaurant pending/rejected/approved routing
+  - admin approve/reject updates restaurant flow
+
+15) SECURITY BASELINE
+- Never commit real secrets to git.
+- Keep service account JSON only in env.
+- Keep all protected API routes behind requireAuth + requireRole.
+- Add audit logs for admin actions in next iteration.
+- Add CSRF protection for cookie-auth write routes in production.
+
+16) NEXT IMPLEMENTATION PHASES
+Phase 1 (done/mostly done)
+- split apps + API
+- OTP auth + sessions + role guards
+- user onboarding + location
+- restaurant application + admin review
+
+Phase 2 (next)
+- menu CRUD
+- order creation + status transitions + SLA timers
+- Socket.IO realtime events
+
+Phase 3
+- payment/escrow integration
+- refunds + reconciliation
+- observability and alerting
+
+END OF BLUEPRINT

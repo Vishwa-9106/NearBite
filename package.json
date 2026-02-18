@@ -3,14 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "scripts": {
-    "dev:web": "npm --workspace @nearbite/web run dev",
+    "dev:user": "npm --workspace @nearbite/user run dev",
+    "dev:restaurant": "npm --workspace @nearbite/restaurant run dev",
+    "dev:admin": "npm --workspace @nearbite/admin run dev",
     "dev:api": "npm --workspace @nearbite/api run dev",
-    "build:web": "npm --workspace @nearbite/web run build",
+    "build:user": "npm --workspace @nearbite/user run build",
+    "build:restaurant": "npm --workspace @nearbite/restaurant run build",
+    "build:admin": "npm --workspace @nearbite/admin run build",
     "build:api": "npm --workspace @nearbite/api run build",
-    "build": "npm run build:web && npm run build:api"
+    "build": "npm run build:user && npm run build:restaurant && npm run build:admin && npm run build:api"
   }
 }
