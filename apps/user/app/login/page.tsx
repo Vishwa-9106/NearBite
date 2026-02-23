@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   PhoneAuthProvider,
   RecaptchaVerifier,
@@ -451,27 +452,39 @@ export default function UserLoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-cyan-50 via-teal-50 to-emerald-50 text-slate-900">
-      <section className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center gap-6 px-6">
-        <header className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-teal-700/80">NearBite User</p>
-          <h1 className="text-3xl font-semibold text-slate-950">Phone OTP sign in</h1>
-          <p className="text-sm text-slate-700">Verify your phone number to discover nearby pickup spots.</p>
-        </header>
+    <main className="min-h-screen bg-[#f4f3f1] text-[#2f2017]">
+      <section className="mx-auto flex min-h-screen w-full max-w-xl flex-col items-center justify-center px-6 py-10">
+        <div className="w-full max-w-md space-y-7">
+          <header className="space-y-3 text-center">
+            <div className="mx-auto h-24 w-24 overflow-hidden">
+              <Image
+                src="/assets/nearbite%20logo.jpg"
+                alt="NearBite logo"
+                width={96}
+                height={96}
+                className="h-full w-full object-cover"
+                priority
+              />
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold tracking-[-0.015em] text-[#23170f] sm:text-3xl">
+                Welcome to NearBite
+              </h1>
+              <p className="text-sm text-[#8c796a] sm:text-base">Enter your mobile number to continue</p>
+            </div>
+          </header>
 
-        <div className="space-y-4 rounded-2xl border border-teal-100 bg-white/90 p-6 shadow-sm">
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.2em] text-teal-700/80">Phone number</label>
-            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white ring-teal-200 transition focus-within:ring">
-              <span className="inline-flex items-center border-r border-slate-200 px-3 text-sm font-medium text-slate-700">
+          <div className="space-y-5">
+            <div className="flex gap-3">
+              <span className="inline-flex h-14 shrink-0 items-center rounded-2xl border border-[#ddd6ce] bg-[#f7f6f4] px-5 text-lg font-semibold text-[#2f2017] sm:text-xl">
                 +91
               </span>
               <input
                 ref={phoneInputRef}
-                className={`w-full px-4 py-3 text-sm text-slate-900 outline-none ${
-                  isPhoneLocked ? "bg-slate-50 text-slate-500" : ""
+                className={`h-14 w-full rounded-2xl border border-[#ddd6ce] bg-[#f7f6f4] px-5 text-sm text-[#2f2017] placeholder:text-[#8c796a] outline-none transition focus:border-[#b59b88] sm:text-base ${
+                  isPhoneLocked ? "cursor-not-allowed opacity-80" : ""
                 }`}
-                placeholder="9876543210"
+                placeholder="Enter mobile number"
                 inputMode="numeric"
                 maxLength={10}
                 disabled={isPhoneLocked}
@@ -485,19 +498,18 @@ export default function UserLoginPage() {
                 }}
               />
             </div>
-            <p className="text-xs text-slate-600">Enter 10-digit mobile number.</p>
 
             {!verificationId ? (
               <button
-                className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                className="h-14 w-full rounded-2xl bg-[#b59b88] text-lg font-bold text-white transition hover:bg-[#aa8f7b] disabled:cursor-not-allowed disabled:opacity-60 sm:text-xl"
                 disabled={!canSend || resendSecondsLeft > 0}
                 onClick={handleSendOtp}
               >
-                {resendSecondsLeft > 0 ? `Send OTP in ${resendSecondsLeft}s` : "Send OTP"}
+                {resendSecondsLeft > 0 ? `Get OTP in ${resendSecondsLeft}s` : "Get OTP"}
               </button>
             ) : (
               <button
-                className="w-full rounded-xl border border-teal-200 bg-white py-3 text-sm font-semibold text-teal-700 disabled:opacity-50"
+                className="h-14 w-full rounded-2xl border border-[#d9c9bb] bg-[#f8f4ef] text-sm font-semibold text-[#6f4d36] transition hover:bg-[#f1e7dc] disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
                 disabled={isLoading}
                 onClick={handleChangeNumber}
               >
@@ -507,8 +519,7 @@ export default function UserLoginPage() {
           </div>
 
           {verificationId ? (
-            <div className="space-y-3">
-              <label className="text-xs uppercase tracking-[0.2em] text-teal-700/80">OTP code</label>
+            <div className="space-y-4 rounded-2xl border border-[#e7ddd2] bg-[#f8f4ef] p-5">
               <div
                 className="grid grid-cols-6 gap-2"
                 onPaste={(event) => {
@@ -522,7 +533,7 @@ export default function UserLoginPage() {
                     ref={(element) => {
                       otpInputRefs.current[index] = element;
                     }}
-                    className="h-12 rounded-xl border border-slate-200 bg-white text-center text-lg font-semibold text-slate-900 outline-none ring-teal-200 transition focus:ring"
+                    className="h-12 rounded-xl border border-[#d8cbbf] bg-white text-center text-base font-semibold text-[#2f2017] outline-none transition focus:border-[#b59b88] sm:text-lg"
                     inputMode="numeric"
                     maxLength={1}
                     value={digit}
@@ -533,7 +544,7 @@ export default function UserLoginPage() {
               </div>
 
               <button
-                className="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                className="h-12 w-full rounded-xl bg-[#6f4d36] text-xs font-semibold text-white transition hover:bg-[#5f412d] disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
                 disabled={!canVerify}
                 onClick={handleVerifyOtp}
               >
@@ -541,16 +552,22 @@ export default function UserLoginPage() {
               </button>
 
               <button
-                className="w-full rounded-xl border border-teal-200 bg-white py-3 text-sm font-semibold text-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-12 w-full rounded-xl border border-[#d8cbbf] bg-white text-xs font-semibold text-[#6f4d36] transition hover:bg-[#fdf8f2] disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
                 disabled={isLoading || resendSecondsLeft > 0}
                 onClick={handleResendOtp}
               >
                 {resendSecondsLeft > 0 ? `Resend OTP in ${resendSecondsLeft}s` : "Resend OTP"}
               </button>
             </div>
-          ) : null}
+          ) : (
+            <div className="flex justify-center gap-3 pt-1">
+              <span className="h-2.5 w-8 rounded-full bg-[#6f4d36]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#ddd7d0]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#ddd7d0]" />
+            </div>
+          )}
 
-          {status ? <p className="text-xs text-slate-700">{status}</p> : null}
+          {status ? <p className="text-center text-xs text-[#6f4d36] sm:text-sm">{status}</p> : null}
           <div ref={recaptchaContainerRef} id="recaptcha-container" className="h-0 overflow-hidden" />
         </div>
       </section>
