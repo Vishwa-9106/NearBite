@@ -75,8 +75,26 @@ restaurantsRouter.post("/me/document", (req, res, next) => {
       url: uploaded.downloadUrl,
       path: uploaded.objectPath
     });
-  } catch {
-    return res.status(500).json({ message: "Failed to upload document." });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "";
+    const normalizedMessage = errorMessage.toLowerCase();
+
+    if (normalizedMessage.includes("no such bucket") || normalizedMessage.includes("bucket does not exist")) {
+      return res.status(500).json({
+        message:
+          "Document storage bucket not found. Check FIREBASE_STORAGE_BUCKET (commonly <project-id>.appspot.com)."
+      });
+    }
+
+    if (normalizedMessage.includes("permission") || normalizedMessage.includes("storage.objects.create")) {
+      return res.status(500).json({
+        message: "Document upload permission denied for Firebase service account."
+      });
+    }
+
+    return res.status(500).json({
+      message: errorMessage || "Failed to upload document."
+    });
   }
 });
 

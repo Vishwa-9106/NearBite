@@ -49,9 +49,32 @@ export function getFirebaseAuth() {
   return getAuth(getFirebaseAdminApp());
 }
 
+export function getFirebaseStorage() {
+  return getStorage(getFirebaseAdminApp());
+}
+
+export function getFirebaseStorageBucketNames() {
+  const configuredBucket = env.FIREBASE_STORAGE_BUCKET?.trim();
+  const projectBucketAppspot = `${env.FIREBASE_PROJECT_ID}.appspot.com`;
+  const projectBucketFirebaseStorage = `${env.FIREBASE_PROJECT_ID}.firebasestorage.app`;
+
+  const candidates = [
+    configuredBucket,
+    configuredBucket?.endsWith(".firebasestorage.app")
+      ? configuredBucket.replace(/\.firebasestorage\.app$/, ".appspot.com")
+      : undefined,
+    configuredBucket?.endsWith(".appspot.com")
+      ? configuredBucket.replace(/\.appspot\.com$/, ".firebasestorage.app")
+      : undefined,
+    projectBucketAppspot,
+    projectBucketFirebaseStorage
+  ].filter((value): value is string => Boolean(value));
+
+  return [...new Set(candidates)];
+}
+
 export function getFirebaseStorageBucket() {
-  const app = getFirebaseAdminApp();
-  const storage = getStorage(app);
-  const bucketName = env.FIREBASE_STORAGE_BUCKET || `${env.FIREBASE_PROJECT_ID}.firebasestorage.app`;
+  const storage = getFirebaseStorage();
+  const bucketName = getFirebaseStorageBucketNames()[0];
   return storage.bucket(bucketName);
 }

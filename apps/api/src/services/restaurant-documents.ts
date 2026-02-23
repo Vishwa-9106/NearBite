@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { getFirebaseStorageBucket } from "./firebase";
+import { getFirebaseStorage, getFirebaseStorageBucketNames } from "./firebase";
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -25,27 +25,46 @@ export async function uploadRestaurantDocument(params: {
   contentType: string;
   originalName: string;
 }) {
-  const bucket = getFirebaseStorageBucket();
+  const storage = getFirebaseStorage();
+  const bucketNames = getFirebaseStorageBucketNames();
   const extension = normalizeExtension(params.contentType, params.originalName);
-  const objectName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
-  const objectPath = `restaurant-documents/${params.restaurantId}/${objectName}`;
-  const downloadToken = crypto.randomUUID();
-  const file = bucket.file(objectPath);
+  let lastError: unknown;
 
-  await file.save(params.fileBuffer, {
-    resumable: false,
-    metadata: {
-      contentType: params.contentType,
-      metadata: {
-        firebaseStorageDownloadTokens: downloadToken
+  for (const bucketName of bucketNames) {
+    const bucket = storage.bucket(bucketName);
+    const objectName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    const objectPath = `restaurant-documents/${params.restaurantId}/${objectName}`;
+    const downloadToken = crypto.randomUUID();
+    const file = bucket.file(objectPath);
+
+    try {
+      await file.save(params.fileBuffer, {
+        resumable: false,
+        metadata: {
+          contentType: params.contentType,
+          metadata: {
+            firebaseStorageDownloadTokens: downloadToken
+          }
+        }
+      });
+
+      return {
+        objectPath,
+        downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
+          objectPath
+        )}?alt=media&token=${downloadToken}`
+      };
+    } catch (error) {
+      lastError = error;
+      if (bucketNames.length === 1) {
+        break;
       }
     }
-  });
+  }
 
-  return {
-    objectPath,
-    downloadUrl: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
-      objectPath
-    )}?alt=media&token=${downloadToken}`
-  };
+  if (lastError instanceof Error) {
+    throw new Error(`Storage upload failed: ${lastError.message}`);
+  }
+
+  throw new Error("Storage upload failed.");
 }
